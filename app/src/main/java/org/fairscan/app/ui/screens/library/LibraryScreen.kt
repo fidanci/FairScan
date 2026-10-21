@@ -64,6 +64,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.fairscan.app.R
 import org.fairscan.app.data.LibraryDocument
+import org.fairscan.app.ui.Navigation
+import org.fairscan.app.ui.components.AppOverflowMenu
 import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,6 +73,7 @@ import java.util.Date
 fun LibraryScreen(
     state: LibraryUiState,
     hasDraft: Boolean,
+    navigation: Navigation,
     onScan: () -> Unit,
     onResumeDraft: () -> Unit,
     onOpen: (LibraryDocument) -> Unit,
@@ -96,6 +99,7 @@ fun LibraryScreen(
                 IconButton(onClick = onAddDocuments) {
                     Icon(Icons.Default.Add, stringResource(R.string.library_add_documents))
                 }
+                AppOverflowMenu(navigation)
             },
         ) },
         floatingActionButton = {

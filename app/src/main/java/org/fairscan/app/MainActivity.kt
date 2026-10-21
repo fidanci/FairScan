@@ -216,6 +216,7 @@ class MainActivity : ComponentActivity() {
                         LibraryScreen(
                             state = libraryState,
                             hasDraft = document.pageCount() > 0,
+                            navigation = navigation,
                             onScan = viewModel::openScanner,
                             onResumeDraft = navigation.toCameraScreen,
                             onOpen = {
