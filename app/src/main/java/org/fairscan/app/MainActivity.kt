@@ -20,7 +20,6 @@ import android.content.ClipData
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.content.pm.PackageManager.PERMISSION_GRANTED
 import android.net.Uri
 import android.os.Build.VERSION.SDK_INT
@@ -31,6 +30,7 @@ import android.view.KeyEvent
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.ManagedActivityResultLauncher
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -45,16 +45,24 @@ import androidx.compose.ui.platform.toClipEntry
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat.checkSelfPermission
 import androidx.core.net.toFile
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.fairscan.app.data.FileLogger
+import org.fairscan.app.data.ApkUpdater
 import org.fairscan.app.data.ImageRepository
 import org.fairscan.app.ui.Navigation
 import org.fairscan.app.ui.Screen
 import org.fairscan.app.ui.components.rememberCameraPermissionState
 import org.fairscan.app.ui.screens.LibrariesScreen
+import org.fairscan.app.ui.screens.library.LibraryScreen
+import org.fairscan.app.ui.screens.library.LibraryViewModel
+import org.fairscan.app.ui.screens.library.LibraryDocumentViewer
+import org.fairscan.app.ui.screens.export.SavedBundle
+import org.fairscan.app.ui.screens.export.SavedItem
 import org.fairscan.app.ui.screens.ResumeScanScreen
 import org.fairscan.app.ui.screens.about.AboutEvent
 import org.fairscan.app.ui.screens.about.AboutScreen
@@ -101,12 +109,17 @@ class MainActivity : ComponentActivity() {
         val imageRepository = sessionViewModel.imageRepository
         viewModel = viewModels<MainViewModel> {
             appContainer.viewModelFactory {
-                MainViewModel(imageRepository, appContainer.logger)
+                MainViewModel(imageRepository, appContainer.logger, launchMode)
             }
         }.value
         val exportViewModel: ExportViewModel by viewModels {
             appContainer.viewModelFactory {
                 ExportViewModel(appContainer, imageRepository)
+            }
+        }
+        val libraryViewModel: LibraryViewModel by viewModels {
+            appContainer.viewModelFactory {
+                LibraryViewModel(appContainer.documentLibrary, appContainer.logger)
             }
         }
         val aboutViewModel: AboutViewModel by viewModels {
@@ -135,7 +148,10 @@ class MainActivity : ComponentActivity() {
             val settingsUiState by settingsViewModel.uiState.collectAsStateWithLifecycle()
             val cameraPermission = rememberCameraPermissionState()
             CollectCameraEvents(cameraViewModel, viewModel)
-            CollectExportEvents(context, exportViewModel)
+            CollectExportEvents(context, exportViewModel) {
+                exportViewModel.resetFilename()
+                viewModel.startNewDocument { viewModel.navigateTo(Screen.Main.Home) }
+            }
             CollectAboutEvents(context, aboutViewModel, imageRepository)
 
             FairScanTheme {
@@ -165,17 +181,82 @@ class MainActivity : ComponentActivity() {
                     null -> {
                         // waiting to load pages to get an initial screen
                     }
+                    is Screen.Main.Home -> {
+                        val libraryState by libraryViewModel.uiState.collectAsStateWithLifecycle()
+                        val libraryPermission = rememberLauncherForActivityResult(
+                            ActivityResultContracts.RequestPermission()
+                        ) { libraryViewModel.refresh() }
+                        val importDocuments = rememberLauncherForActivityResult(
+                            ActivityResultContracts.OpenMultipleDocuments()
+                        ) { uris -> libraryViewModel.importDocuments(uris) }
+                        val reconnectLibrary = rememberLauncherForActivityResult(
+                            ActivityResultContracts.OpenDocumentTree()
+                        ) { uri ->
+                            if (uri != null) {
+                                try {
+                                    val selectedFolder = DocumentFile.fromTreeUri(this@MainActivity, uri)
+                                    if (selectedFolder?.isDirectory != true ||
+                                        !selectedFolder.name.equals("FairScan", ignoreCase = true)) {
+                                        showToast(getString(R.string.library_select_fairscan_folder))
+                                        return@rememberLauncherForActivityResult
+                                    }
+                                    val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                    contentResolver.takePersistableUriPermission(uri, flags)
+                                    libraryViewModel.selectLibraryFolder(uri)
+                                } catch (e: Exception) {
+                                    appContainer.logger.e("Library", "Cannot reconnect FairScan folder", e)
+                                    showToast(getString(R.string.library_select_fairscan_folder))
+                                }
+                            }
+                        }
+                        LifecycleResumeEffect(Unit) {
+                            libraryViewModel.refresh()
+                            onPauseOrDispose { }
+                        }
+                        LibraryScreen(
+                            state = libraryState,
+                            hasDraft = document.pageCount() > 0,
+                            onScan = viewModel::openScanner,
+                            onResumeDraft = navigation.toCameraScreen,
+                            onOpen = {
+                                viewModel.navigateTo(Screen.Main.LibraryDocument(
+                                    it.uri.toString(), it.name, it.format.mimeType
+                                ))
+                            },
+                            onShare = { share(SavedBundle(listOf(SavedItem(it.uri, it.name, it.format)))) },
+                            onAddDocuments = {
+                                importDocuments.launch(arrayOf("application/pdf", "image/jpeg"))
+                            },
+                            onFindOldDocuments = { reconnectLibrary.launch(null) },
+                            onRename = libraryViewModel::renameDocument,
+                            onDelete = libraryViewModel::deleteDocument,
+                            onRetry = {
+                                checkPermissionThen(libraryPermission) { libraryViewModel.refresh() }
+                            },
+                        )
+                    }
                     is Screen.Main.ResumeScan -> {
+                        BackHandler { navigation.back() }
                         ResumeScanScreen(
                             currentDocument = documentUiState,
                             onResumeScan = navigation.toCameraScreen,
                             onStartNewScan = {
-                                viewModel.startNewDocument()
-                                navigation.toCameraScreen()
+                                viewModel.startNewDocument { navigation.toCameraScreen() }
                             }
                         )
                     }
+                    is Screen.Main.LibraryDocument -> {
+                        BackHandler { navigation.back() }
+                        val libraryDocument = currentScreen as Screen.Main.LibraryDocument
+                        LibraryDocumentViewer(
+                            uri = Uri.parse(libraryDocument.uri),
+                            name = libraryDocument.name,
+                            mimeType = libraryDocument.mimeType,
+                            onBack = navigation.back,
+                        )
+                    }
                     is Screen.Main.Camera -> {
+                        BackHandler { navigation.back() }
                         val pickMultiple = rememberLauncherForActivityResult(
                             ActivityResultContracts.GetMultipleContents()) {
                                 uris -> cameraViewModel.importPhotos(uris)
@@ -229,11 +310,7 @@ class MainActivity : ComponentActivity() {
                                 open = { item -> openUri(item.uri, item.format.mimeType, logger) },
                                 cancelPreparationJob = exportViewModel::cancelPreparationJob,
                             ),
-                            onCloseScan = {
-                                exportViewModel.resetFilename()
-                                viewModel.startNewDocument()
-                                viewModel.navigateTo(Screen.Main.Camera)
-                            }
+                            onCloseScan = exportViewModel::onFinishClicked
                         )
                     }
                     is Screen.Overlay.About -> {
@@ -329,9 +406,46 @@ class MainActivity : ComponentActivity() {
             onExportFormatChanged = { format -> settingsViewModel.setExportFormat(format) },
             onExportQualityChanged = { quality -> settingsViewModel.setExportQuality(quality) },
             onDefaultFileNameStyleChanged = settingsViewModel::setDefaultFilenameStyle,
+            onCheckUpdates = {
+                lifecycleScope.launch {
+                    val updater = ApkUpdater(this@MainActivity)
+                    try {
+                        val release = updater.latestRelease()
+                        if (release == null) {
+                            showToast(getString(R.string.update_no_update))
+                        } else {
+                            showToast(getString(R.string.update_downloading, release.version))
+                            val apk = updater.download(release)
+                            @Suppress("DEPRECATION")
+                            val apkInfo = packageManager.getPackageArchiveInfo(apk.absolutePath, 0)
+                            val installedInfo = packageManager.getPackageInfo(packageName, 0)
+                            val apkVersion = if (SDK_INT >= android.os.Build.VERSION_CODES.P) apkInfo?.longVersionCode
+                                ?: 0L else apkInfo?.versionCode?.toLong() ?: 0L
+                            @Suppress("DEPRECATION")
+                            val installedVersion = if (SDK_INT >= android.os.Build.VERSION_CODES.P) installedInfo.longVersionCode
+                                else installedInfo.versionCode.toLong()
+                            if (apkInfo?.packageName != packageName ||
+                                apkVersion <= installedVersion) {
+                                apk.delete()
+                                error("The release APK is invalid or has an older version")
+                            }
+                            val installIntent = checkNotNull(updater.install(apk))
+                            startActivity(installIntent)
+                            if (installIntent.action == android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES) {
+                                showToast(getString(R.string.update_allow_installs))
+                            }
+                        }
+                    } catch (e: Exception) {
+                        appLogger().e("Updater", "Update check failed", e)
+                        showToast(getString(R.string.update_failed))
+                    }
+                }
+            },
             navigation = nav,
         )
     }
+
+    private fun appLogger(): FileLogger = (application as FairScanApp).appContainer.logger
 
     @Composable
     private fun CollectAboutEvents(
@@ -365,12 +479,13 @@ class MainActivity : ComponentActivity() {
     private fun CollectExportEvents(
         context: Context,
         exportViewModel: ExportViewModel,
+        onFinished: () -> Unit,
     ) {
         val storagePermissionLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.RequestPermission()
         ) { isGranted ->
             if (isGranted) {
-                exportViewModel.onSaveClicked()
+                exportViewModel.onRequestSave(context, exportViewModel.pendingRequest)
             } else {
                 showToast(this.getString(R.string.storage_permission_denied))
             }
@@ -378,14 +493,15 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(Unit) {
             exportViewModel.events.collect { event ->
                 when (event) {
-                    ExportEvent.RequestSave -> {
+                    is ExportEvent.RequestSave -> {
                         checkPermissionThen(storagePermissionLauncher) {
-                            exportViewModel.onRequestSave(context)
+                            exportViewModel.onRequestSave(context, event)
                         }
                     }
                     is ExportEvent.Share -> {
                         share(event.result)
                     }
+                    ExportEvent.Finished -> onFinished()
                 }
             }
         }
@@ -405,14 +521,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun share(result: ExportResult) {
-        if (result.files.isEmpty()) return
+    private fun share(result: SavedBundle) {
+        if (result.items.isEmpty()) return
 
-        val uris = result.files.map(::uriForFile)
+        val uris = result.items.map { it.uri }
         val intent = Intent().apply {
             action = if (uris.size == 1) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE
-            type = result.format.mimeType
+            type = result.items.map { it.format.mimeType }.distinct().singleOrNull() ?: "*/*"
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = ClipData.newUri(contentResolver, getString(R.string.share_document), uris.first()).apply {
+                uris.drop(1).forEach { addItem(ClipData.Item(it)) }
+            }
 
             if (uris.size == 1) {
                 putExtra(Intent.EXTRA_STREAM, uris[0])
@@ -422,15 +541,13 @@ class MainActivity : ComponentActivity() {
         }
         val chooser = Intent.createChooser(intent, getString(R.string.share_document))
 
-        val resolveInfos = packageManager.queryIntentActivities(chooser, PackageManager.MATCH_DEFAULT_ONLY)
-        for (info in resolveInfos) {
-            val pkg = info.activityInfo.packageName
-            for (uri in uris) {
-                grantUriPermission(pkg, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
+        try {
+            startActivity(chooser)
+        } catch (_: ActivityNotFoundException) {
+            showToast(getString(R.string.error_no_app))
+        } catch (_: SecurityException) {
+            showToast(getString(R.string.error_occurred))
         }
-
-        startActivity(chooser)
     }
 
     private fun sendActivityResult(result: ExportResult?) {
@@ -516,16 +633,15 @@ class MainActivity : ComponentActivity() {
         toOcrLanguagesScreen = { viewModel.navigateTo(Screen.Overlay.OcrLanguages) },
         back = {
             val origin = viewModel.currentScreen.value
-            viewModel.navigateBack()
-            val destination = viewModel.currentScreen.value
-            if (destination == origin && launchMode == LaunchMode.EXTERNAL_SCAN_TO_PDF) {
+            if (origin == Screen.Main.Camera && launchMode == LaunchMode.EXTERNAL_SCAN_TO_PDF) {
                 setResult(RESULT_CANCELED)
                 finish()
+            } else {
+                viewModel.navigateBack()
             }
         },
         shouldDisplayBackButton = {
-            viewModel.currentScreen.value !is Screen.Main.Camera
-                    || launchMode == LaunchMode.EXTERNAL_SCAN_TO_PDF
+            viewModel.currentScreen.value !is Screen.Main.Home
         }
     )
 

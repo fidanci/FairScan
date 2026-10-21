@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="settings_section_updates">Güncellemeler</string>
+    <string name="settings_check_updates">Güncellemeleri denetle</string>
+    <string name="settings_updates_github">FairScan forkunu GitHub üzerinden denetle</string>
+    <string name="update_no_update">FairScan güncel</string>
+    <string name="update_downloading">FairScan %1$s indiriliyor…</string>
+    <string name="update_allow_installs">Android ayarlarından FairScan için bilinmeyen uygulama yüklemeye izin verip tekrar denetle</string>
+    <string name="update_failed">Güncelleme denetlenemedi veya yüklenemedi</string>
     <string name="about">Hakkında</string>
     <string name="add_page">Sayfa ekle</string>
     <string name="app_tagline">Belgelerinizi taramak için basit ve saygılı bir uygulama.</string>

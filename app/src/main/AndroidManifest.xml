@@ -10,6 +10,7 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"/>
     <!-- To download Tesseract language data -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- REMOVE ACCESS_NETWORK_STATE -->
     <!-- cameraX 1.6.1 depends on androidx.media3:media3-common which adds ACCESS_NETWORK_STATE -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />

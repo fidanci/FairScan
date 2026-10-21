@@ -74,6 +74,7 @@ fun SettingsScreen(
     onExportFormatChanged: (ExportFormat) -> Unit,
     onExportQualityChanged: (ExportQuality) -> Unit,
     onDefaultFileNameStyleChanged: (DefaultFilenameStyle) -> Unit,
+    onCheckUpdates: () -> Unit,
     navigation: Navigation,
 ) {
     BackHandler { navigation.back() }
@@ -93,6 +94,7 @@ fun SettingsScreen(
             onExportFormatChanged,
             onExportQualityChanged,
             onDefaultFileNameStyleChanged,
+            onCheckUpdates,
             navigation,
             modifier = Modifier.padding(paddingValues),
         )
@@ -108,6 +110,7 @@ private fun SettingsContent(
     onExportFormatChanged: (ExportFormat) -> Unit,
     onExportQualityChanged: (ExportQuality) -> Unit,
     onDefaultFileNameStyleChanged: (DefaultFilenameStyle) -> Unit,
+    onCheckUpdates: () -> Unit,
     navigation: Navigation,
     modifier: Modifier = Modifier,
 ) {
@@ -115,7 +118,7 @@ private fun SettingsContent(
     val export = uiState.export
     val (folderLabel, folderLabelColor) = when {
         export.dirUri == null ->
-            stringResource(R.string.download_dirname) to
+            stringResource(R.string.library_folder_name) to
                     MaterialTheme.colorScheme.onSurface
 
         export.dirName != null ->
@@ -219,6 +222,17 @@ private fun SettingsContent(
                 )
             },
             modifier = Modifier.clickable { navigation.toOcrLanguagesScreen() }
+        )
+
+        Spacer(Modifier.height(16.dp))
+        HorizontalDivider()
+        Spacer(Modifier.height(16.dp))
+        Text(stringResource(R.string.settings_section_updates), style = MaterialTheme.typography.titleLarge)
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.settings_check_updates)) },
+            supportingContent = { Text(stringResource(R.string.settings_updates_github)) },
+            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+            modifier = Modifier.clickable(onClick = onCheckUpdates),
         )
     }
 }
@@ -371,6 +385,7 @@ fun SettingsScreenPreview(uiState: SettingsUiState) {
             onExportFormatChanged = {},
             onExportQualityChanged = {},
             onDefaultFileNameStyleChanged = {},
+            onCheckUpdates = {},
             navigation = dummyNavigation(),
         )
     }

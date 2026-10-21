@@ -61,8 +61,8 @@ android {
         // https://ai.google.dev/edge/litert/android/index
         minSdk = 26
         targetSdk = 36
-        versionCode = 96 // increment by 3 because of ABI-specific APKs
-        versionName = "2.3.0"
+        versionCode = providers.gradleProperty("appVersionCode").orElse("99").get().toInt() // increment by 3 because of ABI-specific APKs
+        versionName = providers.gradleProperty("appVersionName").orElse("2.3.1").get()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

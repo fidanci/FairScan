@@ -3,6 +3,9 @@
     <cache-path
         name="pdfs"
         path="pdfs/" />
+    <cache-path
+        name="updates"
+        path="updates/" />
     <external-path
         name="external_files"
         path="." />

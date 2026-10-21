@@ -1,0 +1,52 @@
+name: Publish FairScan fork release
+
+on:
+  push:
+    tags:
+      - 'fork-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Decode release signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.FAIRSCAN_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64" || { echo "Set FAIRSCAN_KEYSTORE_BASE64 in repository secrets"; exit 1; }
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/fairscan-release.jks"
+
+      - name: Build signed APKs
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          version="${GITHUB_REF_NAME#fork-v}"
+          code=$(python3 -c 'import sys; a=list(map(int,sys.argv[1].split("."))); a=(a+[0,0,0])[:3]; print(a[0]*1000000+a[1]*1000+a[2]*10)' "$version")
+          ./gradlew :app:assembleRelease --no-daemon \
+            -PappVersionName="$version" -PappVersionCode="$code" \
+            -PRELEASE_STORE_FILE="$RUNNER_TEMP/fairscan-release.jks" \
+            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+
+      - name: Publish APKs to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#fork-v}"
+          gh release create "$GITHUB_REF_NAME" app/build/outputs/apk/release/*.apk \
+            --title "FairScan $version" --generate-notes
