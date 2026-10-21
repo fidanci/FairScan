@@ -30,15 +30,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -68,6 +72,8 @@ import org.fairscan.app.ui.Navigation
 import org.fairscan.app.ui.components.AppOverflowMenu
 import java.util.Date
 
+private enum class LibrarySort { NAME, DATE, SIZE }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
@@ -78,28 +84,60 @@ fun LibraryScreen(
     onResumeDraft: () -> Unit,
     onOpen: (LibraryDocument) -> Unit,
     onShare: (LibraryDocument) -> Unit,
+    onShareSelected: (List<LibraryDocument>) -> Unit,
     onAddDocuments: () -> Unit,
     onFindOldDocuments: () -> Unit,
     onRename: (LibraryDocument, String) -> Unit,
-    onDelete: (LibraryDocument) -> Unit,
+    onDelete: (List<LibraryDocument>) -> Unit,
     onRetry: () -> Unit,
 ) {
     val context = LocalContext.current
     var deletingDocument by remember { mutableStateOf<LibraryDocument?>(null) }
     var renamingDocument by remember { mutableStateOf<LibraryDocument?>(null) }
     var editedName by remember { mutableStateOf("") }
+    var searchQuery by remember { mutableStateOf("") }
+    var sort by remember { mutableStateOf(LibrarySort.DATE) }
+    var sortExpanded by remember { mutableStateOf(false) }
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedUris by remember { mutableStateOf(setOf<String>()) }
+    val selectedDocuments = state.documents.filter { it.uri.toString() in selectedUris }
+    val visibleDocuments = state.documents
+        .filter { it.name.contains(searchQuery.trim(), ignoreCase = true) }
+        .let { documents -> when (sort) {
+            LibrarySort.NAME -> documents.sortedBy { it.name.lowercase() }
+            LibrarySort.DATE -> documents.sortedByDescending { it.modifiedAt }
+            LibrarySort.SIZE -> documents.sortedByDescending { it.size }
+        } }
 
     Scaffold(
         topBar = { TopAppBar(
-            title = { Text(stringResource(R.string.library_title)) },
+            title = { Text(if (selectionMode) stringResource(R.string.library_selected_count, selectedDocuments.size)
+                else stringResource(R.string.library_title)) },
             actions = {
-                IconButton(onClick = onFindOldDocuments) {
-                    Icon(Icons.Default.FolderOpen, stringResource(R.string.library_reconnect_folder))
+                if (selectionMode) {
+                    IconButton(onClick = { if (selectedDocuments.isNotEmpty()) onShareSelected(selectedDocuments) },
+                        enabled = selectedDocuments.isNotEmpty()) {
+                        Icon(Icons.Default.Share, stringResource(R.string.library_share_selected))
+                    }
+                    IconButton(onClick = { if (selectedDocuments.isNotEmpty()) deletingDocument = selectedDocuments.first() },
+                        enabled = selectedDocuments.isNotEmpty()) {
+                        Icon(Icons.Default.Delete, stringResource(R.string.library_delete_selected))
+                    }
+                    IconButton(onClick = { selectionMode = false; selectedUris = emptySet() }) {
+                        Icon(Icons.Default.Close, stringResource(R.string.library_cancel_selection))
+                    }
+                } else {
+                    IconButton(onClick = onFindOldDocuments) {
+                        Icon(Icons.Default.FolderOpen, stringResource(R.string.library_reconnect_folder))
+                    }
+                    IconButton(onClick = onAddDocuments) {
+                        Icon(Icons.Default.Add, stringResource(R.string.library_add_documents))
+                    }
+                    IconButton(onClick = { selectionMode = true }) {
+                        Icon(Icons.Default.CheckBox, stringResource(R.string.library_manage_documents))
+                    }
+                    AppOverflowMenu(navigation)
                 }
-                IconButton(onClick = onAddDocuments) {
-                    Icon(Icons.Default.Add, stringResource(R.string.library_add_documents))
-                }
-                AppOverflowMenu(navigation)
             },
         ) },
         floatingActionButton = {
@@ -113,6 +151,37 @@ fun LibraryScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+            if (state.documents.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        leadingIcon = { Icon(Icons.Default.Search, stringResource(R.string.library_search)) },
+                        placeholder = { Text(stringResource(R.string.library_search_hint)) },
+                    )
+                    Box {
+                        TextButton(onClick = { sortExpanded = true }) {
+                            Text(stringResource(when (sort) {
+                                LibrarySort.NAME -> R.string.library_sort_name
+                                LibrarySort.DATE -> R.string.library_sort_date
+                                LibrarySort.SIZE -> R.string.library_sort_size
+                            }))
+                        }
+                        DropdownMenu(expanded = sortExpanded, onDismissRequest = { sortExpanded = false }) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.library_sort_name)) },
+                                onClick = { sort = LibrarySort.NAME; sortExpanded = false })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.library_sort_date)) },
+                                onClick = { sort = LibrarySort.DATE; sortExpanded = false })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.library_sort_size)) },
+                                onClick = { sort = LibrarySort.SIZE; sortExpanded = false })
+                        }
+                    }
+                }
+            }
             if (hasDraft) {
                 Card(onClick = onResumeDraft, modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                     Column(Modifier.padding(16.dp)) {
@@ -146,10 +215,22 @@ fun LibraryScreen(
                 }
                 else -> LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(state.documents, key = { it.uri.toString() }) { document ->
+                    if (visibleDocuments.isEmpty()) {
+                        item {
+                            Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                                Text(stringResource(R.string.library_search_no_results),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                    items(visibleDocuments, key = { it.uri.toString() }) { document ->
                         var menuExpanded by remember(document.uri) { mutableStateOf(false) }
+                        val isSelected = document.uri.toString() in selectedUris
                         Card(onClick = {
-                            onOpen(document)
+                            if (selectionMode) {
+                                selectedUris = if (isSelected) selectedUris - document.uri.toString()
+                                    else selectedUris + document.uri.toString()
+                            } else onOpen(document)
                         }, modifier = Modifier.fillMaxWidth()) {
                             Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -163,7 +244,12 @@ fun LibraryScreen(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                Box {
+                                if (selectionMode) {
+                                    Checkbox(checked = isSelected, onCheckedChange = { checked ->
+                                        selectedUris = if (checked) selectedUris + document.uri.toString()
+                                            else selectedUris - document.uri.toString()
+                                    })
+                                } else Box {
                                     IconButton(onClick = { menuExpanded = true }) {
                                         Icon(Icons.Default.MoreVert, stringResource(R.string.library_document_menu, document.name))
                                     }
@@ -201,14 +287,17 @@ fun LibraryScreen(
     }
 
     deletingDocument?.let { document ->
+        val documentsToDelete = if (selectionMode) selectedDocuments else listOf(document)
         AlertDialog(
             onDismissRequest = { deletingDocument = null },
             title = { Text(stringResource(R.string.library_delete_title)) },
-            text = { Text(stringResource(R.string.library_delete_message, 1)) },
+            text = { Text(stringResource(R.string.library_delete_message, documentsToDelete.size)) },
             confirmButton = {
                 TextButton(onClick = {
                     deletingDocument = null
-                    onDelete(document)
+                    selectionMode = false
+                    selectedUris = emptySet()
+                    onDelete(documentsToDelete)
                 }) { Text(stringResource(R.string.library_delete_confirm), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {

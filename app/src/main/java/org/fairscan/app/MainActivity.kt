@@ -225,12 +225,15 @@ class MainActivity : ComponentActivity() {
                                 ))
                             },
                             onShare = { share(SavedBundle(listOf(SavedItem(it.uri, it.name, it.format)))) },
+                            onShareSelected = { documents ->
+                                share(SavedBundle(documents.map { SavedItem(it.uri, it.name, it.format) }))
+                            },
                             onAddDocuments = {
                                 importDocuments.launch(arrayOf("application/pdf", "image/jpeg"))
                             },
                             onFindOldDocuments = { reconnectLibrary.launch(null) },
                             onRename = libraryViewModel::renameDocument,
-                            onDelete = libraryViewModel::deleteDocument,
+                            onDelete = libraryViewModel::deleteDocuments,
                             onRetry = {
                                 checkPermissionThen(libraryPermission) { libraryViewModel.refresh() }
                             },

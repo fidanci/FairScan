@@ -18,6 +18,12 @@
     <string name="library_view_error">This document could not be opened.</string>
     <string name="library_add_documents">Add documents</string>
     <string name="library_manage_documents">Select documents</string>
+    <string name="library_search">Search documents</string>
+    <string name="library_search_hint">Search by file name</string>
+    <string name="library_search_no_results">No documents match your search</string>
+    <string name="library_sort_name">Name</string>
+    <string name="library_sort_date">Date</string>
+    <string name="library_sort_size">Size</string>
     <string name="library_selected_count">%1$d selected</string>
     <string name="library_cancel_selection">Cancel</string>
     <string name="library_share_selected">Share selected documents</string>

@@ -16,6 +16,12 @@
     <string name="library_view_error">Bu belge açılamadı.</string>
     <string name="library_add_documents">Belge ekle</string>
     <string name="library_manage_documents">Belgeleri seç</string>
+    <string name="library_search">Belgelerde ara</string>
+    <string name="library_search_hint">Dosya adına göre ara</string>
+    <string name="library_search_no_results">Aramanızla eşleşen belge bulunamadı</string>
+    <string name="library_sort_name">Ada göre</string>
+    <string name="library_sort_date">Tarihe göre</string>
+    <string name="library_sort_size">Boyuta göre</string>
     <string name="library_selected_count">%1$d seçildi</string>
     <string name="library_cancel_selection">Vazgeç</string>
     <string name="library_share_selected">Seçilen belgeleri paylaş</string>
