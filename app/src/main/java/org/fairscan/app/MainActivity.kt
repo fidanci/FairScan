@@ -331,35 +331,21 @@ class MainActivity : ComponentActivity() {
                                     showToast(getString(R.string.error_occurred))
                                 }
                             },
-                            onShare = { share(SavedBundle(listOf(SavedItem(it.uri, it.name, it.format)))) },
-                            onAddDocuments = {
-                                importDocuments.launch(arrayOf("application/pdf", "image/jpeg"))
-                            },
-                            onRename = libraryViewModel::renameDocument,
-                            onDelete = libraryViewModel::deleteDocument,
-                            onRetry = {
-                                checkPermissionThen(libraryPermission) { libraryViewModel.refresh() }
-                            },
-                        )
+                            onViewLibraries = navigation.toLibrariesScreen)
                     }
-                    is Screen.Main.ResumeScan -> {
-                        BackHandler { navigation.back() }
-                        ResumeScanScreen(
-                            currentDocument = documentUiState,
-                            onResumeScan = navigation.toCameraScreen,
-                            onStartNewScan = {
-                                viewModel.startNewDocument { navigation.toCameraScreen() }
-                            }
-                        )
+                    is Screen.Overlay.Libraries -> {
+                        LibrariesScreen(onBack = navigation.back)
                     }
-                    is Screen.Main.LibraryDocument -> {
-                        BackHandler { navigation.back() }
-                        val libraryDocument = currentScreen as Screen.Main.LibraryDocument
-                        LibraryDocumentViewer(
-                            uri = Uri.parse(libraryDocument.uri),
-                            name = libraryDocument.name,
-                            mimeType = libraryDocument.mimeType,
+                    is Screen.Overlay.Settings -> {
+                        SettingsScreenWrapper(settingsUiState, settingsViewModel, navigation, logger)
+                    }
+                    is Screen.Overlay.OcrLanguages -> {
+                        OcrLanguagesScreen(
+                            uiState = settingsUiState,
                             onBack = navigation.back,
+                            onLanguageClick = settingsViewModel::onLanguageClick,
+                            onRemoveLanguage = settingsViewModel::onRemoveLanguage,
+                            onCancelOcrDownload = settingsViewModel::cancelOcrDownload,
                         )
                     }
                 }
