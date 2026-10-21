@@ -6,6 +6,13 @@
     <string name="update_downloading">Downloading FairScan %1$s…</string>
     <string name="update_allow_installs">Allow FairScan to install updates in Android settings, then check again</string>
     <string name="update_failed">Could not check or install the update</string>
+    <string name="update_stage_checking">Checking GitHub for a new version…</string>
+    <string name="update_stage_downloading">Downloading FairScan %1$s</string>
+    <string name="update_stage_verifying">Verifying downloaded update…</string>
+    <string name="update_stage_installing">Opening Android installer…</string>
+    <string name="update_progress_bytes">%1$s of %2$s</string>
+    <string name="update_progress_speed">%1$s/s</string>
+    <string name="update_progress_remaining">About %1$s remaining</string>
     <!-- About screen: title. It's also an item of the ⋮ menu -->
     <string name="about">About</string>
     <!-- Button in the Document screen -->

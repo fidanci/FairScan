@@ -14,6 +14,8 @@
  */
 package org.fairscan.app.ui.screens.settings
 
+import android.text.format.Formatter
+import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -37,6 +39,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -52,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.tooling.preview.Preview
@@ -63,6 +67,16 @@ import org.fairscan.app.ui.Navigation
 import org.fairscan.app.ui.components.BackButton
 import org.fairscan.app.ui.dummyNavigation
 import org.fairscan.app.ui.theme.FairScanTheme
+
+enum class UpdateStage { CHECKING, DOWNLOADING, VERIFYING, INSTALLING }
+
+data class UpdateProgressUiState(
+    val stage: UpdateStage,
+    val version: String? = null,
+    val downloadedBytes: Long = 0,
+    val totalBytes: Long? = null,
+    val bytesPerSecond: Long = 0,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,8 +90,9 @@ fun SettingsScreen(
     onDefaultFileNameStyleChanged: (DefaultFilenameStyle) -> Unit,
     onCheckUpdates: () -> Unit,
     navigation: Navigation,
+    updateProgress: UpdateProgressUiState? = null,
 ) {
-    BackHandler { navigation.back() }
+    BackHandler(enabled = updateProgress == null) { navigation.back() }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -99,6 +114,51 @@ fun SettingsScreen(
             modifier = Modifier.padding(paddingValues),
         )
     }
+    updateProgress?.let { UpdateProgressDialog(it) }
+}
+
+@Composable
+private fun UpdateProgressDialog(state: UpdateProgressUiState) {
+    val context = LocalContext.current
+    val stageLabel = when (state.stage) {
+        UpdateStage.CHECKING -> stringResource(R.string.update_stage_checking)
+        UpdateStage.DOWNLOADING -> stringResource(R.string.update_stage_downloading, state.version.orEmpty())
+        UpdateStage.VERIFYING -> stringResource(R.string.update_stage_verifying)
+        UpdateStage.INSTALLING -> stringResource(R.string.update_stage_installing)
+    }
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text(stringResource(R.string.settings_section_updates)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stageLabel)
+                if (state.stage == UpdateStage.DOWNLOADING) {
+                    val progress = state.totalBytes?.let { total ->
+                        (state.downloadedBytes.toFloat() / total).coerceIn(0f, 1f)
+                    }
+                    if (progress == null) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    else LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+
+                    val downloaded = Formatter.formatShortFileSize(context, state.downloadedBytes)
+                    val total = state.totalBytes?.let { Formatter.formatShortFileSize(context, it) }
+                    Text(if (total == null) downloaded else stringResource(R.string.update_progress_bytes, downloaded, total))
+                    if (state.bytesPerSecond > 0) {
+                        Text(stringResource(R.string.update_progress_speed,
+                            Formatter.formatShortFileSize(context, state.bytesPerSecond)))
+                    }
+                    if (state.totalBytes != null && state.bytesPerSecond > 0) {
+                        val secondsLeft = ((state.totalBytes - state.downloadedBytes).coerceAtLeast(0) /
+                            state.bytesPerSecond).toInt()
+                        Text(stringResource(R.string.update_progress_remaining,
+                            DateUtils.formatElapsedTime(secondsLeft.toLong())))
+                    }
+                } else if (state.stage == UpdateStage.CHECKING) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+            }
+        },
+        confirmButton = {},
+    )
 }
 
 @Composable

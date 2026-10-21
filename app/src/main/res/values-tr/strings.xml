@@ -7,6 +7,13 @@
     <string name="update_downloading">FairScan %1$s indiriliyor…</string>
     <string name="update_allow_installs">Android ayarlarından FairScan için bilinmeyen uygulama yüklemeye izin verip tekrar denetle</string>
     <string name="update_failed">Güncelleme denetlenemedi veya yüklenemedi</string>
+    <string name="update_stage_checking">GitHub’da yeni sürüm aranıyor…</string>
+    <string name="update_stage_downloading">FairScan %1$s indiriliyor</string>
+    <string name="update_stage_verifying">İndirilen güncelleme doğrulanıyor…</string>
+    <string name="update_stage_installing">Android yükleyicisi açılıyor…</string>
+    <string name="update_progress_bytes">%1$s / %2$s</string>
+    <string name="update_progress_speed">%1$s/sn</string>
+    <string name="update_progress_remaining">Yaklaşık %1$s kaldı</string>
     <string name="about">Hakkında</string>
     <string name="add_page">Sayfa ekle</string>
     <string name="app_tagline">Belgelerinizi taramak için basit ve saygılı bir uygulama.</string>

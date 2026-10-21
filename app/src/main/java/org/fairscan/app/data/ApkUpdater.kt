@@ -18,6 +18,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
@@ -25,8 +26,12 @@ import kotlinx.coroutines.withContext
 import org.fairscan.app.BuildConfig
 import org.json.JSONObject
 import java.io.File
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.ensureActive
 
 class ApkUpdater(private val context: Context) {
     data class Release(val version: String, val downloadUrl: String)
@@ -58,17 +63,53 @@ class ApkUpdater(private val context: Context) {
         }
     }
 
-    suspend fun download(release: Release): File = withContext(Dispatchers.IO) {
+    suspend fun download(
+        release: Release,
+        onProgress: (downloadedBytes: Long, totalBytes: Long?, bytesPerSecond: Long) -> Unit,
+    ): File = withContext(Dispatchers.IO) {
         val directory = File(context.cacheDir, "updates").apply { mkdirs() }
         val apk = File(directory, "FairScan-${release.version}.apk")
+        val partialApk = File(directory, "FairScan-${release.version}.apk.part")
         val connection = (URL(release.downloadUrl).openConnection() as HttpURLConnection).apply {
             connectTimeout = 20_000
             readTimeout = 60_000
+            instanceFollowRedirects = true
             setRequestProperty("User-Agent", "FairScan-Android-Updater")
+            setRequestProperty("Accept-Encoding", "identity")
         }
         try {
             if (connection.responseCode !in 200..299) error("APK download failed: ${connection.responseCode}")
-            connection.inputStream.use { input -> apk.outputStream().use { output -> input.copyTo(output) } }
+            val totalBytes = connection.contentLengthLong.takeIf { it > 0 }
+            val buffer = ByteArray(DOWNLOAD_BUFFER_SIZE)
+            val startedAt = SystemClock.elapsedRealtime()
+            var lastReportAt = startedAt
+            var bytesAtLastReport = 0L
+            var downloadedBytes = 0L
+            BufferedInputStream(connection.inputStream, DOWNLOAD_BUFFER_SIZE).use { input ->
+                BufferedOutputStream(partialApk.outputStream(), DOWNLOAD_BUFFER_SIZE).use { output ->
+                    while (true) {
+                        coroutineContext.ensureActive()
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        output.write(buffer, 0, read)
+                        downloadedBytes += read
+                        val now = SystemClock.elapsedRealtime()
+                        if (now - lastReportAt >= PROGRESS_INTERVAL_MS ||
+                            totalBytes != null && downloadedBytes >= totalBytes) {
+                            val elapsed = (now - lastReportAt).coerceAtLeast(1)
+                            val speed = (downloadedBytes - bytesAtLastReport) * 1000 / elapsed
+                            onProgress(downloadedBytes, totalBytes, speed)
+                            lastReportAt = now
+                            bytesAtLastReport = downloadedBytes
+                        }
+                    }
+                }
+            }
+            onProgress(downloadedBytes, totalBytes, 0)
+            if (!partialApk.renameTo(apk)) {
+                partialApk.copyTo(apk, overwrite = true)
+                partialApk.delete()
+            }
         } finally {
             connection.disconnect()
         }
@@ -100,5 +141,7 @@ class ApkUpdater(private val context: Context) {
     companion object {
         private const val RELEASE_API = "https://api.github.com/repos/fidanci/FairScan/releases/latest"
         private const val APK_MIME = "application/vnd.android.package-archive"
+        private const val DOWNLOAD_BUFFER_SIZE = 256 * 1024
+        private const val PROGRESS_INTERVAL_MS = 300L
     }
 }

@@ -39,6 +39,9 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.toClipEntry
@@ -81,6 +84,8 @@ import org.fairscan.app.ui.screens.export.ExportViewModel
 import org.fairscan.app.ui.screens.settings.OcrLanguagesScreen
 import org.fairscan.app.ui.screens.settings.SettingsScreen
 import org.fairscan.app.ui.screens.settings.SettingsUiState
+import org.fairscan.app.ui.screens.settings.UpdateProgressUiState
+import org.fairscan.app.ui.screens.settings.UpdateStage
 import org.fairscan.app.ui.screens.settings.SettingsViewModel
 import org.fairscan.app.ui.theme.FairScanTheme
 import org.opencv.android.OpenCVLoader
@@ -376,6 +381,7 @@ class MainActivity : ComponentActivity() {
         nav: Navigation,
         logger: FileLogger,
     ) {
+        var updateProgress by remember { mutableStateOf<UpdateProgressUiState?>(null) }
         val launcher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.OpenDocumentTree()
         ) { uri ->
@@ -414,12 +420,28 @@ class MainActivity : ComponentActivity() {
                 lifecycleScope.launch {
                     val updater = ApkUpdater(this@MainActivity)
                     try {
+                        updateProgress = UpdateProgressUiState(UpdateStage.CHECKING)
                         val release = updater.latestRelease()
                         if (release == null) {
+                            updateProgress = null
                             showToast(getString(R.string.update_no_update))
                         } else {
-                            showToast(getString(R.string.update_downloading, release.version))
-                            val apk = updater.download(release)
+                            updateProgress = UpdateProgressUiState(
+                                stage = UpdateStage.DOWNLOADING,
+                                version = release.version,
+                            )
+                            val apk = updater.download(release) { downloaded, total, speed ->
+                                runOnUiThread {
+                                    updateProgress = UpdateProgressUiState(
+                                        stage = UpdateStage.DOWNLOADING,
+                                        version = release.version,
+                                        downloadedBytes = downloaded,
+                                        totalBytes = total,
+                                        bytesPerSecond = speed,
+                                    )
+                                }
+                            }
+                            updateProgress = UpdateProgressUiState(UpdateStage.VERIFYING, release.version)
                             @Suppress("DEPRECATION")
                             val apkInfo = packageManager.getPackageArchiveInfo(apk.absolutePath, 0)
                             val installedInfo = packageManager.getPackageInfo(packageName, 0)
@@ -433,19 +455,23 @@ class MainActivity : ComponentActivity() {
                                 apk.delete()
                                 error("The release APK is invalid or has an older version")
                             }
+                            updateProgress = UpdateProgressUiState(UpdateStage.INSTALLING, release.version)
                             val installIntent = checkNotNull(updater.install(apk))
+                            updateProgress = null
                             startActivity(installIntent)
                             if (installIntent.action == android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES) {
                                 showToast(getString(R.string.update_allow_installs))
                             }
                         }
                     } catch (e: Exception) {
+                        updateProgress = null
                         appLogger().e("Updater", "Update check failed", e)
                         showToast(getString(R.string.update_failed))
                     }
                 }
             },
             navigation = nav,
+            updateProgress = updateProgress,
         )
     }
 
